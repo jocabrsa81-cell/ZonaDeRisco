@@ -311,7 +311,7 @@ document.getElementById('info').onclick=e=>{ if(e.target.id==='info') e.target.s
 setInterval(()=>document.getElementById('clock').textContent=new Date().toLocaleString('pt-PT',{weekday:'short',hour:'2-digit',minute:'2-digit'}),1000);
 
 refresh();
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{});
 </script>
 </body>
 </html>
