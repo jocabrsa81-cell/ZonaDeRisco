@@ -33,6 +33,10 @@
   .btn{position:fixed;right:12px;z-index:1000;width:48px;height:48px;border-radius:50%;border:0;background:#fff;color:#111;
        font-size:22px;box-shadow:0 2px 10px #0008}
   #locBtn{bottom:calc(env(safe-area-inset-bottom) + 120px)}
+  #waterBtn{bottom:calc(env(safe-area-inset-bottom) + 236px);font-size:20px}
+  #waterBtn.on{background:#1e88e5;color:#fff}
+  #waterLg{display:none;font-size:11px;margin-top:6px;gap:6px;flex-wrap:wrap;align-items:center}
+  #waterLg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:3px;vertical-align:-2px}
   #playBtn{bottom:calc(env(safe-area-inset-bottom) + 178px);display:none}
   .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#1d212b;color:#eee}
   .leaflet-popup-content{margin:10px 12px;font-size:14px;line-height:1.35}
@@ -55,12 +59,16 @@
   <div class="chips" id="chips"></div>
 </div>
 
+<button class="btn" id="waterBtn" title="Zonas de lençóis de água (chuva forte)">💧</button>
 <button class="btn" id="playBtn" title="Animar radar">▶</button>
 <button class="btn" id="locBtn" title="A minha localização">◎</button>
 
 <div class="bottom">
   <div class="legend"><span id="lgName"></span><div class="ramp" id="ramp"></div></div>
   <div class="ticks" id="ticks"></div>
+  <div id="waterLg">💧 Lençóis de água (LU, chuva 1h/100 anos):
+    <span><i style="background:#9ecae1"></i>baixo</span><span><i style="background:#3182bd"></i>médio</span>
+    <span><i style="background:#08519c"></i>alto</span><span><i style="background:#54278f"></i>muito alto</span></div>
   <div class="status" id="status"></div>
 </div>
 
@@ -71,7 +79,8 @@
   <b>Chuva 48h</b> – precipitação máxima prevista para hoje/amanhã (Open-Meteo).<br>
   <b>Vento</b> – rajadas máximas previstas.<br>
   <b>Sismos</b> – sismos M2.5+ dos últimos 7 dias (USGS), com a névoa a crescer com a magnitude.<br>
-  <b>Radar</b> – chuva a cair agora (RainViewer).</p>
+  <b>Radar</b> – chuva a cair agora (RainViewer).<br>
+  <b>💧 Lençóis de água</b> – carta oficial de perigo de chuva forte do Luxemburgo (AGE, geoportail.lu): onde a água escorre e se acumula numa chuvada de 1 h que só acontece uma vez em 100 anos. Combina-se com qualquer camada; o mais útil é com <b>Chuva 48h</b> ou <b>Radar</b>. Só cobre o Luxemburgo.</p>
   <p>Avisos oficiais: <a href="https://www.inondations.lu" target="_blank">inondations.lu</a> · <a href="https://www.vigicrues.gouv.fr" target="_blank">Vigicrues</a> · <a href="https://www.meteolux.lu" target="_blank">MeteoLux</a> · <a href="https://vigilance.meteofrance.fr" target="_blank">Météo-France</a> · <a href="https://www.meteoalarm.org" target="_blank">Meteoalarm</a></p>
   <button class="chip on" onclick="document.getElementById('info').style.display='none'">Fechar</button>
 </div></div>
@@ -239,6 +248,26 @@ document.getElementById('playBtn').onclick=()=>{
   document.getElementById('playBtn').textContent='❚❚';
   radarTimer=setInterval(()=>showRadar((radarIdx+1)%radarLayers.length),600);
 };
+
+// ---------- Lençóis de água (carta oficial AGE Luxemburgo) ----------
+const WATER_LAYER = '2045_3';   // crues subites / Starkregen, 1h - 100 anos
+map.createPane('waterPane'); map.getPane('waterPane').style.zIndex=380; map.getPane('waterPane').style.pointerEvents='none';
+const water = L.tileLayer.wms('https://wms.geoportail.lu/public_map_layers/service',{
+  layers:WATER_LAYER, format:'image/png', transparent:true, version:'1.3.0', opacity:.85,
+  minZoom:11, pane:'waterPane', attribution:'Starkregenkarte © AGE / geoportail.lu'});
+let waterErr=0;
+water.on('tileerror',()=>{ if(++waterErr===4) status('Carta de lençóis de água indisponível de momento (geoportail.lu)'); });
+const waterBtn=document.getElementById('waterBtn');
+function setWater(on){
+  waterBtn.classList.toggle('on',on);
+  document.getElementById('waterLg').style.display=on?'flex':'none';
+  try{ localStorage.setItem('rm_water',on?'1':'0') }catch(e){}
+  if(on){ water.addTo(map); if(map.getZoom()<11) status('💧 Aproxima o mapa (zoom 11+) para ver os lençóis de água'); }
+  else map.removeLayer(water);
+}
+waterBtn.onclick=()=>setWater(!map.hasLayer(water));
+map.on('zoomend',()=>{ if(map.hasLayer(water)&&map.getZoom()<11) status('💧 Aproxima o mapa (zoom 11+) para ver os lençóis de água'); });
+try{ if(localStorage.getItem('rm_water')==='1') setWater(true) }catch(e){}
 
 // ---------- UI ----------
 function levelOf(key,v){
