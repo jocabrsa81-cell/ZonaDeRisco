@@ -13,8 +13,8 @@
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:#0d0f14;color:#eee;font-family:system-ui,-apple-system,Roboto,sans-serif}
   #map{position:fixed;inset:0;background:#1a1d24}
-  #fog{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:350;
-       filter:blur(10px) saturate(1.2);opacity:.78;transition:opacity .3s}
+  #fog{position:absolute;left:0;top:0;pointer-events:none;filter:blur(10px) saturate(1.2);opacity:.8}
+  .dark-tiles{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6)}
   .top{position:fixed;left:0;right:0;top:0;z-index:1000;padding:calc(env(safe-area-inset-top) + 10px) 12px 8px;
        background:linear-gradient(#0d0f14ee,#0d0f1400)}
   .title{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px}
@@ -102,14 +102,15 @@ const LAYERS = {
 const saved = (()=>{ try{ return JSON.parse(localStorage.getItem('rm_view')) }catch(e){ return null } })();
 const map = L.map('map',{zoomControl:false, attributionControl:true})
   .setView(saved ? [saved.lat,saved.lng] : [49.48,6.08], saved ? saved.z : 10);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
-  maxZoom:18, attribution:'© OpenStreetMap © CARTO · Open-Meteo · USGS · RainViewer'}).addTo(map);
-const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',{maxZoom:18, pane:'shadowPane'}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19, className:'dark-tiles', attribution:'© OpenStreetMap · Open-Meteo · USGS · RainViewer'}).addTo(map);
 map.on('moveend',()=>{ const c=map.getCenter(); try{ localStorage.setItem('rm_view',JSON.stringify({lat:c.lat,lng:c.lng,z:map.getZoom()})) }catch(e){} });
 
 // Canvas da névoa
+// a névoa vive num painel próprio: acima do mapa, abaixo dos marcadores e popups
+map.createPane('fogPane'); map.getPane('fogPane').style.zIndex=350; map.getPane('fogPane').style.pointerEvents='none';
 const fog = document.createElement('canvas'); fog.id='fog';
-map.getContainer().appendChild(fog);
+map.getPane('fogPane').appendChild(fog);
 const SCALE = 5; // resolução reduzida -> suaviza
 let current = 'flood', points = [], quakeMarkers = L.layerGroup().addTo(map);
 
@@ -128,6 +129,8 @@ function kmPerPx(){
 function drawFog(){
   const size=map.getSize(), w=Math.ceil(size.x/SCALE), h=Math.ceil(size.y/SCALE);
   fog.width=w; fog.height=h;
+  fog.style.width=size.x+'px'; fog.style.height=size.y+'px';
+  L.DomUtil.setPosition(fog, map.containerPointToLayerPoint([0,0]));
   const ctx=fog.getContext('2d'); ctx.clearRect(0,0,w,h);
   const L_=LAYERS[current]; if(!L_.min || !points.length) return;
   const kpp=kmPerPx()*SCALE, pts=[];
@@ -154,7 +157,7 @@ function drawFog(){
   ctx.putImageData(img,0,0);
 }
 let raf=0; const redraw=()=>{ cancelAnimationFrame(raf); raf=requestAnimationFrame(drawFog); };
-map.on('move zoom resize',redraw);
+map.on('move zoom resize viewreset',redraw);
 
 // ---------- Dados ----------
 const status = t => document.getElementById('status').textContent=t;

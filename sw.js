@@ -1,5 +1,5 @@
 // Service worker: app shell em cache, dados sempre da rede (com fallback à cache)
-const CACHE = 'riscomapa-v1';
+const CACHE = 'riscomapa-v2';
 const SHELL = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'];
 
