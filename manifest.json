@@ -1,0 +1,16 @@
+{
+  "name": "Risco Mapa",
+  "short_name": "Risco Mapa",
+  "description": "Mapa de riscos com névoa colorida: cheias, chuva, vento, sismos e radar",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d0f14",
+  "theme_color": "#0d0f14",
+  "lang": "pt-PT",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

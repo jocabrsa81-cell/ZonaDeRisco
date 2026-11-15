@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d0f14">
+<title>Risco Mapa</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#0d0f14;color:#eee;font-family:system-ui,-apple-system,Roboto,sans-serif}
+  #map{position:fixed;inset:0;background:#1a1d24}
+  #fog{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:350;
+       filter:blur(10px) saturate(1.2);opacity:.78;transition:opacity .3s}
+  .top{position:fixed;left:0;right:0;top:0;z-index:1000;padding:calc(env(safe-area-inset-top) + 10px) 12px 8px;
+       background:linear-gradient(#0d0f14ee,#0d0f1400)}
+  .title{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px}
+  .title small{font-weight:400;opacity:.6;font-size:12px;margin-left:auto}
+  .chips{display:flex;gap:8px;overflow-x:auto;padding:10px 0 4px;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:none;border:0;border-radius:999px;padding:9px 15px;font-weight:700;font-size:14px;letter-spacing:.3px;
+        background:#2a2e38;color:#ddd;text-transform:uppercase}
+  .chip.on{background:#fff;color:#111}
+  .bottom{position:fixed;left:0;right:0;bottom:0;z-index:1000;padding:10px 12px calc(env(safe-area-inset-bottom) + 12px);
+          background:linear-gradient(#0d0f1400,#0d0f14f2 35%)}
+  .legend{display:flex;align-items:center;gap:8px;font-size:12px}
+  .ramp{flex:1;height:12px;border-radius:6px}
+  .ticks{display:flex;justify-content:space-between;font-size:11px;opacity:.75;margin-top:3px}
+  .status{font-size:12px;opacity:.7;margin-top:6px;min-height:16px}
+  .btn{position:fixed;right:12px;z-index:1000;width:48px;height:48px;border-radius:50%;border:0;background:#fff;color:#111;
+       font-size:22px;box-shadow:0 2px 10px #0008}
+  #locBtn{bottom:calc(env(safe-area-inset-bottom) + 120px)}
+  #playBtn{bottom:calc(env(safe-area-inset-bottom) + 178px);display:none}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#1d212b;color:#eee}
+  .leaflet-popup-content{margin:10px 12px;font-size:14px;line-height:1.35}
+  .lvl{display:inline-block;padding:2px 8px;border-radius:6px;font-weight:700;color:#111}
+  .leaflet-control-attribution{font-size:9px;background:#0008!important;color:#aaa}
+  .leaflet-control-attribution a{color:#ccc}
+  .leaflet-top{top:calc(env(safe-area-inset-top) + 100px)}
+  #info{position:fixed;inset:0;z-index:2000;background:#000a;display:none;align-items:flex-end}
+  #info .card{background:#1d212b;width:100%;padding:18px 18px calc(env(safe-area-inset-bottom) + 18px);border-radius:16px 16px 0 0;font-size:14px;line-height:1.45;max-height:75vh;overflow:auto}
+  #info h3{margin:0 0 8px}
+  #info a{color:#8cf}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="top">
+  <div class="title">🌀 Risco Mapa <small id="clock"></small>
+    <button class="chip" id="infoBtn" style="padding:6px 11px">?</button></div>
+  <div class="chips" id="chips"></div>
+</div>
+
+<button class="btn" id="playBtn" title="Animar radar">▶</button>
+<button class="btn" id="locBtn" title="A minha localização">◎</button>
+
+<div class="bottom">
+  <div class="legend"><span id="lgName"></span><div class="ramp" id="ramp"></div></div>
+  <div class="ticks" id="ticks"></div>
+  <div class="status" id="status"></div>
+</div>
+
+<div id="info"><div class="card">
+  <h3>Como ler o mapa</h3>
+  <p>A "névoa" mostra onde o risco é mais alto: <b>amarelo</b> = atenção, <b>laranja</b> = moderado, <b>vermelho</b> = alto, <b>magenta/roxo</b> = muito alto. Toca no mapa para ver o valor nesse ponto.</p>
+  <p><b>Cheias</b> – subida prevista do caudal dos rios nos próximos 7 dias face à média dos últimos 30 (modelo GloFAS, malha ~5 km). Mostra tendência, não substitui os avisos oficiais.<br>
+  <b>Chuva 48h</b> – precipitação máxima prevista para hoje/amanhã (Open-Meteo).<br>
+  <b>Vento</b> – rajadas máximas previstas.<br>
+  <b>Sismos</b> – sismos M2.5+ dos últimos 7 dias (USGS), com a névoa a crescer com a magnitude.<br>
+  <b>Radar</b> – chuva a cair agora (RainViewer).</p>
+  <p>Avisos oficiais: <a href="https://www.inondations.lu" target="_blank">inondations.lu</a> · <a href="https://www.vigicrues.gouv.fr" target="_blank">Vigicrues</a> · <a href="https://www.meteolux.lu" target="_blank">MeteoLux</a> · <a href="https://vigilance.meteofrance.fr" target="_blank">Météo-France</a> · <a href="https://www.meteoalarm.org" target="_blank">Meteoalarm</a></p>
+  <button class="chip on" onclick="document.getElementById('info').style.display='none'">Fechar</button>
+</div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ---------- Configuração das camadas ----------
+const RAMP = [ // [fração, r,g,b,a]
+  [0.00, 255,235, 59, 0.00],
+  [0.20, 255,235, 59, 0.55],
+  [0.45, 255,152,  0, 0.70],
+  [0.70, 244, 54, 54, 0.80],
+  [1.00, 170, 40,220, 0.90]
+];
+const LAYERS = {
+  flood:{ name:'Cheias', unit:'×', ticks:['1×','1.5×','2×','3×','4×+'], min:1, max:4, sigmaKm:9,
+          levels:[[1.5,'Atenção'],[2,'Moderado'],[3,'Alto'],[4,'Muito alto']] },
+  rain: { name:'Chuva 48h', unit:'mm', ticks:['5','15','30','50','80+'], min:5, max:80, sigmaKm:14,
+          levels:[[15,'Atenção'],[30,'Moderado'],[50,'Alto'],[80,'Muito alto']] },
+  wind: { name:'Vento', unit:'km/h', ticks:['50','65','80','100','120+'], min:50, max:120, sigmaKm:14,
+          levels:[[65,'Atenção'],[80,'Moderado'],[100,'Alto'],[120,'Muito alto']] },
+  quake:{ name:'Sismos', unit:'M', ticks:['2.5','3.5','4.5','5.5','6.5+'], min:2.5, max:6.5,
+          levels:[[3.5,'Sentido'],[4.5,'Moderado'],[5.5,'Forte'],[6.5,'Muito forte']] },
+  radar:{ name:'Radar', ticks:['fraca','','moderada','','forte'] }
+};
+
+// ---------- Mapa ----------
+const saved = (()=>{ try{ return JSON.parse(localStorage.getItem('rm_view')) }catch(e){ return null } })();
+const map = L.map('map',{zoomControl:false, attributionControl:true})
+  .setView(saved ? [saved.lat,saved.lng] : [49.48,6.08], saved ? saved.z : 10);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  maxZoom:18, attribution:'© OpenStreetMap © CARTO · Open-Meteo · USGS · RainViewer'}).addTo(map);
+const labels = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',{maxZoom:18, pane:'shadowPane'}).addTo(map);
+map.on('moveend',()=>{ const c=map.getCenter(); try{ localStorage.setItem('rm_view',JSON.stringify({lat:c.lat,lng:c.lng,z:map.getZoom()})) }catch(e){} });
+
+// Canvas da névoa
+const fog = document.createElement('canvas'); fog.id='fog';
+map.getContainer().appendChild(fog);
+const SCALE = 5; // resolução reduzida -> suaviza
+let current = 'flood', points = [], quakeMarkers = L.layerGroup().addTo(map);
+
+function colorAt(t){
+  t=Math.max(0,Math.min(1,t));
+  for(let i=1;i<RAMP.length;i++){ if(t<=RAMP[i][0]){
+    const a=RAMP[i-1], b=RAMP[i], f=(t-a[0])/(b[0]-a[0]);
+    return [0,1,2,3].map(k=>a[k+1]+(b[k+1]-a[k+1])*f);
+  }}
+  return RAMP[RAMP.length-1].slice(1);
+}
+function kmPerPx(){
+  const c=map.getCenter(), p=map.latLngToContainerPoint(c);
+  return map.distance(c, map.containerPointToLatLng([p.x+100,p.y]))/100/1000;
+}
+function drawFog(){
+  const size=map.getSize(), w=Math.ceil(size.x/SCALE), h=Math.ceil(size.y/SCALE);
+  fog.width=w; fog.height=h;
+  const ctx=fog.getContext('2d'); ctx.clearRect(0,0,w,h);
+  const L_=LAYERS[current]; if(!L_.min || !points.length) return;
+  const kpp=kmPerPx()*SCALE, pts=[];
+  for(const p of points){
+    const cp=map.latLngToContainerPoint([p.lat,p.lng]);
+    const sigKm = current==='quake' ? Math.pow(10,0.33*p.v)*2 : L_.sigmaKm;  // sismos: raio cresce com M
+    const sig=sigKm/kpp, t=(p.v-L_.min)/(L_.max-L_.min);
+    if(t<=0) continue;
+    const x=cp.x/SCALE, y=cp.y/SCALE;
+    if(x<-4*sig||y<-4*sig||x>w+4*sig||y>h+4*sig) continue;
+    pts.push([x,y,2*sig*sig,t]);
+  }
+  const img=ctx.createImageData(w,h), d=img.data;
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    let best=0;
+    for(const [px,py,s2,t] of pts){
+      const dx=x-px, dy=y-py, v=t*Math.exp(-(dx*dx+dy*dy)/s2);
+      if(v>best) best=v;
+    }
+    if(best<0.02) continue;
+    const c=colorAt(best), i=(y*w+x)*4;
+    d[i]=c[0]; d[i+1]=c[1]; d[i+2]=c[2]; d[i+3]=c[3]*255;
+  }
+  ctx.putImageData(img,0,0);
+}
+let raf=0; const redraw=()=>{ cancelAnimationFrame(raf); raf=requestAnimationFrame(drawFog); };
+map.on('move zoom resize',redraw);
+
+// ---------- Dados ----------
+const status = t => document.getElementById('status').textContent=t;
+const cache = {};
+function gridForView(n=9){
+  const b=map.getBounds().pad(0.15), out=[];
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++)
+    out.push([+(b.getSouth()+(b.getNorth()-b.getSouth())*i/(n-1)).toFixed(3),
+              +(b.getWest()+(b.getEast()-b.getWest())*j/(n-1)).toFixed(3)]);
+  return out;
+}
+async function omFetch(base, grid, params){
+  const url=`${base}?latitude=${grid.map(g=>g[0]).join(',')}&longitude=${grid.map(g=>g[1]).join(',')}&${params}&timezone=auto`;
+  if(cache[url] && Date.now()-cache[url].t<30*60e3) return cache[url].d;
+  const r=await fetch(url); if(!r.ok) throw new Error('HTTP '+r.status);
+  let d=await r.json(); if(!Array.isArray(d)) d=[d];
+  cache[url]={t:Date.now(),d}; return d;
+}
+async function loadFlood(){
+  // grelha mais densa: os rios são estreitos
+  const grid=gridForView(map.getZoom()>=10?12:10);
+  const data=await omFetch('https://flood-api.open-meteo.com/v1/flood',grid,'daily=river_discharge&past_days=30&forecast_days=7');
+  const today=new Date().toISOString().slice(0,10);
+  return data.map((r,k)=>{
+    const t=r.daily.time, q=r.daily.river_discharge;
+    const past=[], fut=[];
+    t.forEach((d,i)=>{ if(q[i]==null) return; (d<today?past:fut).push(q[i]); });
+    const mean=past.reduce((a,b)=>a+b,0)/(past.length||1), peak=Math.max(...fut,0);
+    if(mean<3) return null;                         // ignora células sem rio relevante
+    return {lat:grid[k][0],lng:grid[k][1],v:peak/mean, extra:`Caudal: ${mean.toFixed(0)} → ${peak.toFixed(0)} m³/s (pico 7 dias)`};
+  }).filter(Boolean);
+}
+async function loadRain(){
+  const grid=gridForView();
+  const data=await omFetch('https://api.open-meteo.com/v1/forecast',grid,'daily=precipitation_sum&forecast_days=2');
+  return data.map((r,k)=>({lat:grid[k][0],lng:grid[k][1],v:Math.max(...r.daily.precipitation_sum.map(x=>x||0)),
+    extra:`Hoje ${r.daily.precipitation_sum[0]??0} mm · Amanhã ${r.daily.precipitation_sum[1]??0} mm`}));
+}
+async function loadWind(){
+  const grid=gridForView();
+  const data=await omFetch('https://api.open-meteo.com/v1/forecast',grid,'daily=wind_gusts_10m_max&forecast_days=2');
+  return data.map((r,k)=>({lat:grid[k][0],lng:grid[k][1],v:Math.max(...r.daily.wind_gusts_10m_max.map(x=>x||0)),
+    extra:`Rajadas: hoje ${r.daily.wind_gusts_10m_max[0]} · amanhã ${r.daily.wind_gusts_10m_max[1]} km/h`}));
+}
+let quakeData=null;
+async function loadQuake(){
+  if(!quakeData||Date.now()-quakeData.t>10*60e3){
+    const r=await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson');
+    quakeData={t:Date.now(), d:(await r.json()).features};
+  }
+  quakeMarkers.clearLayers();
+  return quakeData.d.map(f=>{
+    const [lng,lat,depth]=f.geometry.coordinates, m=f.properties.mag, when=new Date(f.properties.time);
+    const extra=`${f.properties.place}<br>${when.toLocaleString('pt-PT')} · prof. ${depth.toFixed(0)} km`;
+    L.circleMarker([lat,lng],{radius:3+m*1.5,color:'#fff',weight:1,fillColor:'#c2185b',fillOpacity:.8})
+      .bindPopup(popupHtml('quake',m,extra)).addTo(quakeMarkers);
+    return {lat,lng,v:m,extra};
+  });
+}
+
+// ---------- Radar (RainViewer) ----------
+let radarFrames=[], radarLayers=[], radarIdx=0, radarTimer=null;
+async function loadRadar(){
+  const r=await fetch('https://api.rainviewer.com/public/weather-maps.json'); const j=await r.json();
+  radarFrames=j.radar.past.concat(j.radar.nowcast||[]);
+  radarLayers=radarFrames.map(f=>L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/4/1_1.png`,
+    {opacity:0, maxNativeZoom:7, maxZoom:18, zIndex:300}));
+  radarLayers.forEach(l=>l.addTo(map));
+  showRadar(j.radar.past.length-1);
+}
+function showRadar(i){
+  radarLayers.forEach((l,k)=>l.setOpacity(k===i?.75:0)); radarIdx=i;
+  const f=radarFrames[i]; if(f) status('Radar: '+new Date(f.time*1000).toLocaleTimeString('pt-PT',{hour:'2-digit',minute:'2-digit'}));
+}
+function clearRadar(){ stopPlay(); radarLayers.forEach(l=>map.removeLayer(l)); radarLayers=[]; }
+function stopPlay(){ clearInterval(radarTimer); radarTimer=null; document.getElementById('playBtn').textContent='▶'; }
+document.getElementById('playBtn').onclick=()=>{
+  if(radarTimer) return stopPlay();
+  document.getElementById('playBtn').textContent='❚❚';
+  radarTimer=setInterval(()=>showRadar((radarIdx+1)%radarLayers.length),600);
+};
+
+// ---------- UI ----------
+function levelOf(key,v){
+  let lv=['Baixo','#9e9e9e']; const cols=['#ffeb3b','#ff9800','#f44336','#c13de0'];
+  (LAYERS[key].levels||[]).forEach(([th,name],i)=>{ if(v>=th) lv=[name,cols[i]]; });
+  return lv;
+}
+function popupHtml(key,v,extra){
+  const L_=LAYERS[key], [n,c]=levelOf(key,v);
+  const val = key==='flood' ? v.toFixed(1)+'× a média' : key==='quake' ? 'M'+v.toFixed(1) : Math.round(v)+' '+L_.unit;
+  return `<b>${L_.name}</b>: ${val}<br><span class="lvl" style="background:${c}">${n}</span><br><small>${extra||''}</small>`;
+}
+map.on('click',e=>{
+  if(current==='radar'||!points.length) return;
+  let best=null, bd=1e12;
+  for(const p of points){ const d=map.distance(e.latlng,[p.lat,p.lng]); if(d<bd){bd=d;best=p;} }
+  if(!best) return;
+  if(current==='quake' && bd>300e3) return L.popup().setLatLng(e.latlng).setContent('Sem sismos M2.5+ por perto nos últimos 7 dias.').openOn(map);
+  L.popup().setLatLng(e.latlng).setContent(popupHtml(current,best.v,best.extra)).openOn(map);
+});
+
+function renderLegend(){
+  const L_=LAYERS[current];
+  document.getElementById('lgName').textContent=L_.name;
+  const stops = current==='radar'
+    ? 'linear-gradient(90deg,#4fc3f7,#00e676,#ffeb3b,#ff5722,#e040fb)'
+    : 'linear-gradient(90deg,'+RAMP.map(r=>`rgba(${r[1]},${r[2]},${r[3]},${Math.max(r[4],.25)}) ${r[0]*100}%`).join(',')+')';
+  document.getElementById('ramp').style.background=stops;
+  document.getElementById('ticks').innerHTML=L_.ticks.map(t=>`<span>${t}</span>`).join('');
+}
+const loaders={flood:loadFlood,rain:loadRain,wind:loadWind,quake:loadQuake};
+let reqId=0;
+async function refresh(){
+  const my=++reqId;
+  renderLegend();
+  document.getElementById('playBtn').style.display = current==='radar'?'block':'none';
+  if(current==='radar'){ points=[]; drawFog(); if(!radarLayers.length){ status('A carregar radar…'); try{await loadRadar()}catch(e){status('Radar indisponível')} } return; }
+  clearRadar(); if(current!=='quake') quakeMarkers.clearLayers();
+  status('A carregar '+LAYERS[current].name.toLowerCase()+'…');
+  try{
+    const pts=await loaders[current]();
+    if(my!==reqId) return;
+    points=pts; drawFog();
+    const top=pts.reduce((m,p)=>p.v>m?p.v:m,0);
+    status(pts.length ? `Atualizado ${new Date().toLocaleTimeString('pt-PT',{hour:'2-digit',minute:'2-digit'})} · nível mais alto na zona: ${levelOf(current,top)[0]}` : 'Sem dados nesta zona');
+  }catch(e){ if(my===reqId) status('Erro a obter dados ('+e.message+'). Sem rede?'); }
+}
+let mt; map.on('moveend',()=>{ if(current!=='quake'&&current!=='radar'){ clearTimeout(mt); mt=setTimeout(refresh,600);} });
+
+const chips=document.getElementById('chips');
+Object.entries(LAYERS).forEach(([k,v])=>{
+  const b=document.createElement('button'); b.className='chip'+(k===current?' on':''); b.textContent=v.name;
+  b.onclick=()=>{ current=k; chips.querySelectorAll('.chip').forEach(c=>c.classList.remove('on')); b.classList.add('on'); refresh(); };
+  chips.appendChild(b);
+});
+
+// Localização
+let me=null;
+document.getElementById('locBtn').onclick=()=>{
+  if(!navigator.geolocation) return status('GPS indisponível');
+  navigator.geolocation.getCurrentPosition(p=>{
+    const ll=[p.coords.latitude,p.coords.longitude];
+    if(me) map.removeLayer(me);
+    me=L.circleMarker(ll,{radius:8,color:'#fff',weight:3,fillColor:'#2196f3',fillOpacity:1}).addTo(map);
+    map.setView(ll,11);
+  },()=>status('Sem permissão de localização'),{enableHighAccuracy:true,timeout:10000});
+};
+document.getElementById('infoBtn').onclick=()=>document.getElementById('info').style.display='flex';
+document.getElementById('info').onclick=e=>{ if(e.target.id==='info') e.target.style.display='none'; };
+setInterval(()=>document.getElementById('clock').textContent=new Date().toLocaleString('pt-PT',{weekday:'short',hour:'2-digit',minute:'2-digit'}),1000);
+
+refresh();
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
